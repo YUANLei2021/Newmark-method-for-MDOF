@@ -14,9 +14,12 @@ class Newmark:
     """
     Newmark method
     """
-    def __init__(self):
+    def __init__(self, task_name=None):
         # task number
-        self.number_task = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        if task_name is None:
+            self.number_task = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        else:
+            self.number_task = task_name
         # default degree
         self.degree = 4
 
@@ -66,7 +69,8 @@ class Newmark:
         :param m_matrix:
         :return:
         """
-        m_matrix = np.array(m_matrix)
+        if not isinstance(m_matrix, np.ndarray):
+            m_matrix = np.array(m_matrix)
         if m_matrix.shape == (self.degree, self.degree):
             self.m_matrix = m_matrix
         else:
@@ -78,7 +82,8 @@ class Newmark:
         :param k_matrix:
         :return:
         """
-        k_matrix = np.array(k_matrix)
+        if not isinstance(k_matrix, np.ndarray):
+            k_matrix = np.array(k_matrix)
         if k_matrix.shape == (self.degree, self.degree):
             self.k_matrix = k_matrix
         else:
@@ -90,7 +95,8 @@ class Newmark:
         :param c_matrix:
         :return:
         """
-        c_matrix = np.array(c_matrix)
+        if not isinstance(c_matrix, np.ndarray):
+            c_matrix = np.array(c_matrix)
         if c_matrix.shape == (self.degree, self.degree):
             self.c_matrix = c_matrix
         else:
@@ -102,7 +108,10 @@ class Newmark:
         :param u0:
         :return:
         """
-        u0 = np.array(u0).reshape(-1, 1)
+        if not isinstance(u0, np.ndarray):
+            u0 = np.array(u0).reshape(-1, 1)
+        else:
+            u0 = u0.reshape(-1, 1)
         if u0.shape[0] == self.degree:
             self.u0 = u0
         else:
@@ -114,7 +123,10 @@ class Newmark:
         :param v0:
         :return:
         """
-        v0 = np.array(v0).reshape(-1, 1)
+        if not isinstance(v0, np.ndarray):
+            v0 = np.array(v0).reshape(-1, 1)
+        else:
+            v0 = v0.reshape(-1, 1)
         if v0.shape[0] == self.degree:
             self.v0 = v0
         else:
@@ -126,7 +138,8 @@ class Newmark:
         :param f_all:
         :return:
         """
-        f_all = np.array(f_all)
+        if not isinstance(f_all, np.ndarray):
+            f_all = np.array(f_all)
         if f_all.shape[1] == self.degree:
             self.f_all = f_all
         else:
@@ -141,7 +154,8 @@ class Newmark:
         """
         self.t_total = t_total
         self.dt = dt
-        self.t_list = np.arange(0.0, self.t_total + self.dt, self.dt).reshape(-1, 1)
+        n_steps = int(np.round(self.t_total / self.dt))+1
+        self.t_list = np.linspace(0.0, self.t_total, n_steps).reshape(-1, 1)
 
     def set_newmark_parameters(self, gamma, delta):
         """
@@ -170,27 +184,30 @@ class Newmark:
 
         k_equal = self.k_matrix + z0 * self.m_matrix + z1 * self.c_matrix
         l_matrix = linalg.cholesky(k_equal, lower=True)
+        j_matrix = np.linalg.inv(l_matrix.T).dot(np.linalg.inv(l_matrix))
 
-        u_all = self.u0.T
-        v_all = self.v0.T
-        a_all = a0
+        u_all = [self.u0.T]
+        v_all = [self.v0.T]
+        a_all = [a0]
 
-        for i in range(self.t_list.shape[0]):
+        for i in range(self.t_list.shape[0]-1):
             f_t = self.f_all[i].reshape(-1, 1)
             x_t = u_all[i].reshape(-1, 1)
             v_t = v_all[i].reshape(-1, 1)
             a_t = a_all[i].reshape(-1, 1)
             q_t = f_t + self.m_matrix.dot(z0 * x_t + z2 * v_t + z3 * a_t) + self.c_matrix.dot(z1 * x_t + z4 * v_t
                                                                                               + z5 * a_t)
-            x_t2 = np.linalg.inv(l_matrix.T).dot(np.linalg.inv(l_matrix)).dot(q_t)
+            x_t2 = j_matrix.dot(q_t)
             a_t2 = z0 * (x_t2 - x_t) - z2 * v_t - z3 * a_t
             v_t2 = v_t + z6 * a_t + z7 * a_t2
-            u_all = np.append(u_all, x_t2.T, axis=0)
-            v_all = np.append(v_all, v_t2.T, axis=0)
-            a_all = np.append(a_all, a_t2.T, axis=0)
-        u_all = u_all[1:]
-        v_all = v_all[1:]
-        a_all = a_all[1:]
+            u_all.append(x_t2.T)  # np.append(u_all, x_t2.T, axis=0)
+            v_all.append(v_t2.T)  # np.append(v_all, v_t2.T, axis=0)
+            a_all.append(a_t2.T)  # np.append(a_all, a_t2.T, axis=0)
+
+        u_all = np.array(u_all).squeeze()
+        v_all = np.array(v_all).squeeze()
+        a_all = np.array(a_all).squeeze()
+
         f_all_pred = (self.m_matrix.dot(a_all.T) + self.k_matrix.dot(u_all.T) + self.c_matrix.dot(v_all.T)).T
         self.u_all = u_all
         self.v_all = v_all
@@ -204,7 +221,7 @@ class Newmark:
             u_name.append(f'u{i + 1}')
             v_name.append(f'v{i + 1}')
             a_name.append(f'a{i + 1}')
-            f_name.append(f'f_{i + 1}')
+            f_name.append(f'f_{i + 1}_pred')
             f_name2.append(f'f{i + 1}')
 
         dirs = ['./data', './png']
@@ -237,31 +254,37 @@ class Newmark:
         a_all = self.a_all
         f_all_pred = self.f_all_pred
 
+        l_data = u_all.shape[0]
+        if l_data > 1000:
+            n_step = l_data // 1000
+        else:
+            n_step = 1
+        t_list = self.t_list[::n_step]
         plt.figure()
         for i in range(u_all.shape[1]):
-            plt.plot(self.t_list, u_all[:, i], label=f'u{i+1}')
+            plt.plot(t_list, u_all[::n_step, i], label=f'u{i+1}')
         plt.legend()
         plt.savefig(f'./png/{self.number_task}-displacement.png')
         plt.show()
 
         plt.figure()
         for i in range(v_all.shape[1]):
-            plt.plot(self.t_list, v_all[:, i], label=f'v{i + 1}')
+            plt.plot(t_list, v_all[::n_step, i], label=f'v{i + 1}')
         plt.legend()
         plt.savefig(f'./png/{self.number_task}-velocity.png')
         plt.show()
 
         plt.figure()
         for i in range(a_all.shape[1]):
-            plt.plot(self.t_list, a_all[:, i], label=f'a{i + 1}')
+            plt.plot(t_list, a_all[::n_step, i], label=f'a{i + 1}')
         plt.legend()
         plt.savefig(f'./png/{self.number_task}-acceleration.png')
         plt.show()
 
         plt.figure()
         for i in range(self.f_all.shape[1]):
-            plt.plot(self.t_list, f_all_pred[:, i], label=f'f{i + 1}_pred')
-            plt.scatter(self.t_list, self.f_all[:, i], label=f'f{i + 1}_exact', s=3, c='k', marker='x')
+            plt.plot(t_list, f_all_pred[::n_step, i], label=f'f{i + 1}_pred')
+            plt.scatter(t_list, self.f_all[::n_step, i], label=f'f{i + 1}_exact', s=3, c='k', marker='x')
         plt.legend()
         plt.savefig(f'./png/{self.number_task}-force.png')
         plt.show()
